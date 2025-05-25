@@ -1,15 +1,26 @@
-################################################################
-#  Update Date: 2023-04-14                         #
-################################################################
-
+import os
 import random
+
+from einops import rearrange
 import numpy as np
+import pandas as pd
+from scipy.optimize import fminbound
 from sklearn.preprocessing import scale
+
+
+def crossprod(A, B):
+    return A.T @ B
+
+def tcrossprod(A, B):
+    return A @ B.T
+
 
 def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0.02,
        shrink = False, n_qtl = 100, n_iter = 5, return_imputed = False):
     
     '''
+    Calculates the realized additive relationshipo matrix.
+
     Parameters:
     -----------
     X [array]:
@@ -53,11 +64,6 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
         Imputed X matrix
     '''
 
-    def crossprod(A, B):
-        return np.dot(np.transpose(A), B)
-    
-    def tcrossprod(A, B):
-        return np.dot(A, np.transpose(B))
 
     def substitude_missing(A, B, missing_index):
         for i in range(len(missing_index)):
@@ -74,8 +80,8 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
         A_qtl = tcrossprod(W[:, qtl], W[:, qtl]) / np.sum(2 * p[qtl] * (1 - p[qtl]))
         x = A_mark - np.mean(np.diag(A_mark)) * np.eye(n)
         y = A_qtl - np.mean(np.diag(A_qtl)) * np.eye(n)
-        x = x.reshape(1, -1)[0]
-        y = y.reshape(1, -1)[0]
+        x = rearrange(x, 'i j -> (i j)')
+        y = rearrange(y, 'i j -> (i j)')
         return 1 - np.cov(y, x) / np.var(x, ddof = 1)
 
     def impute_EM(W, cov_mat, mean_vec):
@@ -135,13 +141,13 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
 
     n = X.shape[0]
     m = X.shape[1]
-    tmp = X + 1
+    X_shifted = X + 1
     frac_missing = np.zeros(m)
     freq = np.zeros(m)
     MAF = np.zeros(m)
     for i in range(m):
         frac_missing[i] = np.sum(np.isnan(X)[:, i]) / n
-        freq[i] = np.nanmean(tmp[:, i]) / 2
+        freq[i] = np.nanmean(X_shifted[:, i]) / 2
         MAF[i] = min(freq[i], 1 - freq[i])
     missing = max(frac_missing) > 0
     if not min_MAF:
@@ -151,12 +157,12 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
     markers = np.intersect1d(np.where(MAF >= min_MAF)[0], np.where(frac_missing <= max_missing)[0])
     m = len(markers)
     var_A = 2 * np.mean(freq[markers] * (1 - freq[markers]))
-    one = np.ones((n, 1))
-    mono = np.where(freq * (1 - freq) == 0)
-    freqmono = freq[mono[0]]
+    ones_vector = np.ones((n, 1))
+    monomorphic_markers = np.where(freq * (1 - freq) == 0)
+    freqmono = freq[monomorphic_markers[0]]
     freqmarkers = freq[markers]
-    X[:, mono[0]] = 2 * tcrossprod(one, freqmono.reshape(-1, 1)) -1
-    freq_mat = tcrossprod(one, freqmarkers.reshape(-1, 1))
+    X[:, monomorphic_markers[0]] = 2 * tcrossprod(ones_vector, freqmono.reshape(-1, 1)) -1
+    freq_mat = tcrossprod(ones_vector, freqmarkers.reshape(-1, 1))
     W = X[:, markers] + 1 - 2 * freq_mat
     if not missing:
         if shrink:
@@ -218,7 +224,7 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
                 A = (cov_W + tcrossprod(W_mean, W_mean)) / var_A
             else:
                 delta = []
-                for i in range(shrink_iter):
+                for i in range(n_iter):
                     delta.append(shrink_coeff(i, W, n_qtl, freq_mat[0, :]))
                 delta = np.nanmean(np.array(delta))
                 print('Shrinkage intensity:', format(delta, ".2f"))
@@ -234,13 +240,6 @@ def A_mat(X, min_MAF = None, max_missing = None, impute_method = "mean", tol = 0
 
 
 
-import numpy as np
-import pandas as pd
-from scipy.optimize import fminbound
-from rpy2 import robjects
-from rpy2.robjects import numpy2ri
-numpy2ri.activate()
-import os
 
 def mixed_solve(y, Z = None, K = None, X = None, method = "REML",
            bounds = [1e-09, 1e+09], SE = False, return_Hinv = False):
@@ -304,12 +303,6 @@ def mixed_solve(y, Z = None, K = None, X = None, method = "REML",
         Inverse of H = Z*K*Z' + \lambda*I
     '''
     
-    def crossprod(A, B):
-        return np.dot(np.transpose(A), B)
-    
-    def tcrossprod(A, B):
-        return np.dot(A, np.transpose(B))
-
     if method not in ["ML", "REML"]:
         print("Invalid maximum-likelihood method.")
         return

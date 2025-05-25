@@ -1,14 +1,11 @@
 import pytest
 import numpy as np
 import pandas as pd
-# from rpy2.robjects.packages import importr # Removed
-# import rpy2.robjects.numpy2ri # Removed
-# from rpy2.robjects import pandas2ri # Removed
-import rpy2.robjects # Required for rpy2.robjects.conversion.py2rpy
-from pyrrblup import A_mat, mixed_solve # Assuming pyrrblup is installed
+import rpy2.robjects 
+from pyrrblup import A_mat, mixed_solve 
 
 # rrBLUP_r will come from conftest.py via fixture
-TOLERANCE_MIXED_SOLVE = 1e-5 # Potentially different tolerance for mixed_solve outputs
+TOLERANCE_MIXED_SOLVE = 1e-5 
 R_MIN_MAF_DEFAULT = 0.05
 R_MAX_MISSING_DEFAULT = 0.5
 
@@ -44,27 +41,10 @@ def train_data_protein():
     # Prepare R versions
     train_y_r = rpy2.robjects.conversion.py2rpy(train_y_np)
     
-    # For X_r, we need to replicate R's `as.matrix(train[-1])`
-    # Load the dataframe again to ensure we're replicating R's view.
     try:
         df_for_r = pd.read_csv('data/protein.train.csv')
     except FileNotFoundError:
         df_for_r = pd.read_csv('../data/protein.train.csv')
-
-    # If the first column is 'label', R's train[-1] would exclude it.
-    # If the first column is an index (e.g. "Unnamed: 0"), R's train[-1] would exclude that index column,
-    # and 'label' would still be in the remaining R dataframe.
-    # Then R would take all columns *except the first of that modified dataframe*.
-    # This is tricky. Let's assume demo.R's `train` dataframe (after read.csv)
-    # has 'label' as a distinct column, and other columns are markers.
-    # `train_x <- as.matrix(train[-1])` would mean:
-    # 1. If 'label' is the FIRST column, train_x gets all other columns.
-    # 2. If 'label' is NOT the first, train_x gets all columns except whatever was first.
-    # The most robust interpretation from demo.R `train_y <- train['label']`, `train_x <- train[-1]`
-    # is that `train_x` are all columns *not* named 'label', assuming 'label' is not the first column.
-    # If 'label' IS the first column, `train[-1]` is "all but label".
-    # If an unnamed index is first, and 'label' is second, `train[-1]` is "all but the unnamed index".
-    # This implies that for R's A.mat, the input should be the marker matrix *without* 'label'.
     
     if 'label' in df_for_r.columns:
         train_x_r_input_df = df_for_r.drop('label', axis=1)
@@ -113,31 +93,14 @@ def test_mixed_solve_with_Z(train_data_protein, rrblup_r_package): # Added fixtu
 
 
 def test_mixed_solve_with_K(train_data_protein, rrblup_r_package): # Added fixture
-    # Generate K matrix first.
-    # For this test, use R's defaults for min_MAF and max_missing in both Python and R A_mat calls
-    # to make K as similar as possible, thus isolating the mixed_solve comparison.
-    
-    # Python A_mat to generate K_py
-    # X_py from fixture is already markers only
     K_py = A_mat(train_data_protein["X_py"], 
                  min_MAF=R_MIN_MAF_DEFAULT, 
                  max_missing=R_MAX_MISSING_DEFAULT)
     
-    # R A.mat to generate K_r
-    # X_r_df_markers_only is the pandas DF of markers, A.mat needs this form for rpy2 conversion
-    # In train_data_protein, X_r is already an R matrix of markers
     K_r_obj = rrblup_r_package.A_mat(train_data_protein["X_r"],  # Use fixture and X_r from fixture
                              min_MAF=R_MIN_MAF_DEFAULT, 
                              max_missing=R_MAX_MISSING_DEFAULT)
-    # K_r_obj is an R matrix.
-    
-    # Python execution with K
-    # y_py is (n,1), K_py is (n,n)
     py_results_K = mixed_solve(y=train_data_protein["y_py"], K=K_py)
-
-    # R execution with K
-    # y_r is R vector, K_r_obj is R matrix
     r_results_K = rrblup_r_package.mixed_solve(y=train_data_protein["y_r"], K=K_r_obj) # Use fixture
     
     compare_mixed_solve_results(py_results_K, r_results_K, TOLERANCE_MIXED_SOLVE)
-```

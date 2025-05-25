@@ -10,17 +10,17 @@ This project is structured as a Python package, allowing for easy installation a
 
 The package requires Python 3.7 or higher. The main Python dependencies are:
 
-- numpy==1.24.0
-- scikit-learn==1.2.0
-- pandas==1.5.2
-- scipy==1.9.3
-- rpy2==3.5.6
+- numpy
+- scikit-learn
+- pandas
+- scipy
+
+For testing:
+- rpy2
 
 A full list of Python dependencies can be found in the `pyproject.toml` file.
 
-### System Dependencies: R and rrBLUP R Package
-
-**Important**: This package, particularly its testing suite and certain functionalities (like `mixed_solve` which relies on R for its core computation via `rpy2`), has a system dependency on **R** and the R package **`rrBLUP`**.
+### Result comparison with R: R, rrBLUP and asrmle R Package
 
 You must have R installed on your system. You can download R from [CRAN (The Comprehensive R Archive Network)](https://cran.r-project.org/).
 
@@ -28,6 +28,8 @@ Once R is installed, you need to install the `rrBLUP` package within your R envi
 
 ```R
 install.packages("rrBLUP")
+install.packages("asreml")
+install.packages("tidyverse")
 ```
 
 Please ensure R is correctly installed and the `rrBLUP` package is available in the R environment that `rpy2` will interact with, especially if you are using virtual environments or multiple R versions.
@@ -49,9 +51,8 @@ pip install -e .
 We suggest creating a new virtual environment for a clean installation:
 
 ```bash
-conda create -n pyrrblup python=3.8 # Or your preferred Python version >= 3.7
+conda create -n pyrrblup -c conda-forge python=3.12 r-base rpy2 numpy scikit-learn pandas scipy
 conda activate pyrrblup
-# Ensure R and the R package rrBLUP are installed as described in "System Dependencies"
 pip install .
 ```
 
@@ -250,9 +251,8 @@ Hinv [array]:
 
 ## License
 
-This project is released under the MIT License. See the `pyproject.toml` file for details (or a separate `LICENSE` file if added).
+This project is released under the Apace License Version 2.0. See the `pyproject.toml` file for details and `LICENSE`.
 
 ## Contributing
 
-Contributions are welcome! Please refer to the `CONTRIBUTING.md` file (if available) or open an issue on the project's bug tracker.
-(Placeholder for project URLs will be updated in `pyproject.toml`)
+Contributions are welcome! Please refer to the `CONTRIBUTING.md`.
