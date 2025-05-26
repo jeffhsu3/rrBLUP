@@ -13,45 +13,35 @@ R_MAX_MISSING_DEFAULT = 0.5
 def train_data_protein():
     # Load data from protein.train.csv
     try:
-        df = pd.read_csv('data/protein.train.csv')
+        df = pd.read_csv('data/small.train.csv')
     except FileNotFoundError:
-        df = pd.read_csv('../data/protein.train.csv')
-
-    # Extract y (phenotypes) and X (genotypes)
-    # demo.R: train_y <- as.matrix(train['label']); train_x <- as.matrix(train[-1])
+        df = pd.read_csv('../data/small.train.csv')
+    
+    current_converter = rpy2.robjects.conversion.get_conversion()
     
     train_y_np = df['label'].values.astype(float).reshape(-1, 1) # Ensure it's a column vector
     
-    # For train_x_np, R's train[-1] means all columns except the first one it read.
-    # We need to ensure our train_x_np matches R's expectation of the genotype matrix.
-    # In demo.R, train_x <- as.matrix(train[-1]) suggests that if 'label' is the first column,
-    # it is excluded. If 'label' is not the first, then whatever is the first column is excluded.
-    # However, the paired usage `train_y <- as.matrix(train['label'])` implies 'label' is a named column.
-    # It's safer to assume train_x is everything BUT 'label'.
     if 'label' in df.columns:
         train_x_np = df.drop('label', axis=1).values.astype(float)
-    else: # Fallback if 'label' column is missing, though demo.R implies it exists
-        # This case should ideally not happen if data matches demo.R
-        # If first column is an index, pandas might have read it as such.
-        # If no 'label', assume first column is phenotype, rest are genotypes.
+    else:
         train_y_np = df.iloc[:, 0].values.astype(float).reshape(-1, 1)
         train_x_np = df.iloc[:, 1:].values.astype(float)
 
 
     # Prepare R versions
-    train_y_r = rpy2.robjects.conversion.py2rpy(train_y_np)
+    train_y_r = current_converter.py2rpy(train_y_np)
     
     try:
-        df_for_r = pd.read_csv('data/protein.train.csv')
+        df_for_r = pd.read_csv('data/small.train.csv')
     except FileNotFoundError:
-        df_for_r = pd.read_csv('../data/protein.train.csv')
+        df_for_r = pd.read_csv('../data/small.train.csv')
     
     if 'label' in df_for_r.columns:
         train_x_r_input_df = df_for_r.drop('label', axis=1)
     else: # Should not happen based on demo.R
         train_x_r_input_df = df_for_r.iloc[:, 1:] # Fallback
 
-    train_x_r = rpy2.robjects.conversion.py2rpy(train_x_r_input_df.astype(float))
+    train_x_r = current_converter.py2rpy(train_x_r_input_df.astype(float))
     
     return {
         "y_py": train_y_np, "X_py": train_x_np, # X_py is markers only
@@ -80,14 +70,10 @@ def compare_mixed_solve_results(py_res, r_res, tolerance):
 
 
 def test_mixed_solve_with_Z(train_data_protein, rrblup_r_package): # Added fixture
-    # Python execution
-    # mixed_solve adds an intercept by default if X is None.
-    # When Z is provided, K is assumed identity. X (fixed effects) defaults to an intercept.
-    py_results_Z = mixed_solve(y=train_data_protein["y_py"], Z=train_data_protein["X_py"])
+    Amat, train_x_imp = A_mat(train_data_protein["X_py"], impute_method = 'mean', return_imputed = True)
+    py_results_Z = mixed_solve(y=train_data_protein["y_py"], Z=train_x_imp)
 
-    # R execution
-    # mixed.solve(y, Z) also defaults to REML and adds an intercept for fixed effects.
-    r_results_Z = rrblup_r_package.mixed_solve(y=train_data_protein["y_r"], Z=train_data_protein["X_r"]) # Use fixture
+    r_results_Z = rrblup_r_package.mixed_solve(y=train_data_protein["y_r"], Z=train_x_imp) # Use fixture
 
     compare_mixed_solve_results(py_results_Z, r_results_Z, TOLERANCE_MIXED_SOLVE)
 
