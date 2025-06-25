@@ -43,28 +43,81 @@ print(Sys.time()-start_time)
 # or if 'p' is passed within the shrink list.
 # This appears to be an internal bug in the R package's handling of allele frequencies for this specific feature.
 
-# # REG shrink method
-# start_time <- Sys.time()
-# 
-# # Calculate p for REG shrink method
-# train_x_shifted <- train_x + 1
-# freq <- apply(train_x_shifted, 2, function(x) mean(x, na.rm = TRUE)) / 2
-# min_MAF_val <- 0.05
-# max_missing_val <- 0.5
-# MAF <- pmin(freq, 1 - freq)
-# missing_prop <- colMeans(is.na(train_x))
-# markers_idx <- which((MAF >= min_MAF_val) & (missing_prop <= max_missing_val))
-# p_values <- freq[markers_idx]
-# 
-# current_n_qtl <- min(10, length(p_values)) # Define current_n_qtl
-# 
-# # Test passing p inside the shrink list, and min.MAF/max.missing as main A.mat arguments
-# Amat <- A.mat(train_x, 
-#               shrink=list(method="REG", p=p_values, n.qtl=current_n_qtl, n.iter=5), 
-#               min.MAF=min_MAF_val, 
-#               max.missing=max_missing_val)
-# print(Amat)
-# print(Sys.time()-start_time)
+# REG shrink method
+start_time <- Sys.time()
+
+# Set seed for reproducibility
+set.seed(42) # Using 42 as an example seed
+
+# Calculate p for REG shrink method
+train_x_shifted <- train_x + 1
+freq <- apply(train_x_shifted, 2, function(x) mean(x, na.rm = TRUE)) / 2
+min_MAF_val <- 0.05 # Default value, adjust if necessary
+max_missing_val <- 0.5 # Default value, adjust if necessary
+
+# Filter markers based on MAF and missingness FOR THE PURPOSE OF GETTING p_values
+# This logic should align with what A.mat does internally if p is not supplied,
+# or use the same filtered marker set if p is supplied.
+MAF <- pmin(freq, 1 - freq)
+missing_prop <- colMeans(is.na(train_x))
+
+# It's crucial that markers_idx here corresponds to the markers A.mat will actually use.
+# The R version of A.mat handles marker filtering internally based on min.MAF and max.missing.
+# If we provide 'p', it should be for *those* markers A.mat will use.
+# For simplicity, let's assume A.mat uses all markers if p is not provided,
+# or let's ensure p_values align with A.mat's internal filtering if we can determine it.
+# The original R code had issues with passing 'p'. Let's try to call A.mat
+# such that it calculates p internally, or pass p for all markers if that's how pyrrblup works.
+
+# Given the comment about issues with passing 'p' to R's A.mat,
+# and that pyrrblup's shrink_coeff gets passed freq_mat[0,:] (implying frequencies for markers *after* filtering),
+# the most robust way for the R code to mimic this is to also let A.mat do its internal filtering
+# and rely on its internal 'p' calculation if the 'shrink' list doesn't explicitly override it in a working way.
+# The original rrBLUP documentation suggests 'p' is optional for shrink$REG.
+
+# Let's define p_values based on *all* markers initially, as pyrrblup calculates `freq_mat`
+# which is then indexed by `markers` (filtered list) before being passed to shrink_coeff.
+# However, the R A.mat might expect 'p' to correspond to the markers *it* decides to use *after* its own filtering.
+# This is a known tricky point with the R package.
+
+# Simplification: The python code calculates `freq_mat` first, then filters markers, then uses `freq_mat[0, markers]` for `p`.
+# R's A.mat does its own filtering. If `shrink` parameter in R needs `p`, it must be for the *final* set of markers A.mat uses.
+# The original R example comments out passing `p` directly due to errors.
+# Let's try calling it without `p` first in the `shrink` list, letting A.mat use its defaults or internally calculated `p`.
+
+# Define current_n_qtl. Ensure it's less than or equal to the number of markers A.mat will use.
+# This might require a preliminary call to A.mat or knowledge of its filtering if not all markers are used.
+# For now, let's use a small number.
+current_n_qtl <- min(10, ncol(train_x)) # Simplified: use a small number or ncol(train_x)
+                                      # Python version uses m (number of filtered markers)
+
+# The original R code had issues passing 'p'.
+# Let's try the call structure that was commented, but without 'p' in the shrink list first,
+# as the error message suggested 'p' was an unused argument or missing.
+# If A.mat's REG method can run without 'p' in the list, it might use its own calculation.
+print("Attempting A.mat with REG shrink method (no explicit 'p' in shrink list)...")
+Amat <- tryCatch({
+    A.mat(train_x,
+          shrink=list(method="REG", n.qtl=current_n_qtl, n.iter=5),
+          min.MAF=min_MAF_val,
+          max.missing=max_missing_val)
+}, error = function(e) {
+    print(paste("Error with REG (no explicit p):", e$message))
+    # Fallback or try alternative if the above fails, e.g. trying to pass p if the error indicates it's needed
+    # For now, just return NULL or an error indicator
+    NULL
+})
+
+if (!is.null(Amat)) {
+    print(Amat)
+} else {
+    print("A.mat with REG shrink method failed or was skipped.")
+    # As per the original R file's comments, the REG method in R's A.mat is problematic.
+    # The goal here is to have the R code structure for seeding, even if the REG call itself
+    # highlights issues in the R package.
+    # The python seed mechanism is the primary fix.
+}
+print(Sys.time()-start_time)
 
 # The following 'mixed.solve' sections are commented out.
 # Reason: The rrBLUP::mixed.solve function encounters numerical issues

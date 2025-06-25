@@ -18,6 +18,7 @@ def A_mat(
     n_qtl=100,
     n_iter=5,
     return_imputed=False,
+    seed=None,
 ):
     """
     Calculates the realized additive relationship matrix.
@@ -71,7 +72,9 @@ def A_mat(
                 A[missing_index[i], missing_index[j]] = B[i, j]
         return A
 
-    def shrink_coeff(i, W, n_qtl, p):
+    def shrink_coeff(i, W, n_qtl, p, seed=None):
+        if seed is not None:
+            random.seed(seed)
         m = W.shape[1]
         n = W.shape[0]
         qtl = np.array(random.sample(range(m), n_qtl))
@@ -182,7 +185,7 @@ def A_mat(
             else:
                 delta = []
                 for i in range(n_iter):
-                    delta.append(shrink_coeff(i, W, n_qtl, freq_mat[0, :]))
+                    delta.append(shrink_coeff(i, W, n_qtl, freq_mat[0, :], seed=seed))
                 delta = np.nanmean(np.array(delta))
                 print("Shrinkage intensity:", format(delta, ".2f"))
                 A = (W @ W.T) / var_A / m
@@ -240,7 +243,7 @@ def A_mat(
             else:
                 delta = []
                 for i in range(n_iter):
-                    delta.append(shrink_coeff(i, W, n_qtl, freq_mat[0, :]))
+                    delta.append(shrink_coeff(i, W, n_qtl, freq_mat[0, :], seed=seed))
                 delta = np.nanmean(np.array(delta))
                 print("Shrinkage intensity:", format(delta, ".2f"))
                 A = (W @ W.T) / var_A / m
